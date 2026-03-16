@@ -1,0 +1,5 @@
+link_env/
+__pycache__/
+.env
+/media/
+db.sqlite3
