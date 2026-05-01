@@ -7,16 +7,12 @@ class ChatList(models.Model):
     user1 = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
-        related_name="inbox_user1",
-        null=True, blank=True
-    )
+        related_name="inbox_user1" )
     user2 = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
-        related_name="inbox_user2",
-        null=True, blank=True
-    )
-
+        related_name="inbox_user2" )
+ 
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

@@ -9,6 +9,7 @@ from .models import ChatList, Message, ImageMessage
 from .serializers import  MessageSerializer, ImageMessageSerializer, InboxSerializer
 from .permissions import IsSenderOrReadOnly, IsParticipantOrReadOnly
 from notifications.utils import create_message_notification
+from rest_framework import status
    
  
 # Message ViewSet
@@ -18,17 +19,33 @@ class InboxListView(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        return ChatList.objects.filter(user1=user) | ChatList.objects.filter(user2=user)
+        return (
+            ChatList.objects
+            .filter(Q(user1=user) | Q(user2=user))
+            .prefetch_related('messages')
+            .select_related('user1', 'user2')
+            .order_by('-updated_at')
+        )
 
-    def perform_create(self, serializer):
-        user1 = self.request.user
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        user1 = request.user
         user2 = serializer.validated_data['user2']
 
-        # prevent duplicate chat
-        if ChatList.objects.filter(Q(user1=user1, user2=user2) | Q(user1=user2, user2=user1)).exists():
-            raise ValidationError("An inbox already exists between these users.")
+        existing = ChatList.objects.filter(
+            Q(user1=user1, user2=user2) | Q(user1=user2, user2=user1)
+        ).first()
 
-        serializer.save(user1=user1, user2=user2)
+        if existing:
+            return Response(
+                self.get_serializer(existing).data,
+                status=status.HTTP_200_OK
+            )
+
+        instance = serializer.save(user1=user1)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
         
 
 
@@ -39,7 +56,7 @@ class MessageViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         inbox_id = self.kwargs.get('inbox_pk')
-        return Message.objects.filter(inbox_id=inbox_id).order_by('created_at')
+        return Message.objects.filter(inbox_id=inbox_id).order_by('-created_at')
 
     def perform_create(self, serializer):
         inbox = get_object_or_404(ChatList, id=self.kwargs.get('inbox_pk'))
@@ -70,7 +87,6 @@ class MessageViewSet(viewsets.ModelViewSet):
             inbox=inbox, receiver=request.user, is_read=False
         ).update(is_read=True)
         return Response({"message": "All messages marked as read"})
-
 
 
 

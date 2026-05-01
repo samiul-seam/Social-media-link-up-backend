@@ -1,48 +1,62 @@
 from rest_framework import viewsets
 from django.shortcuts import get_object_or_404
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
-from .models import Post, PostMedia, Like, Comment, Reply
+from .models import Post, PostMedia, Like, Comment, Reply, CommentLike, ReplyLike
 from accounts.models import Follow
-from .serializers import PostSerializer, PostMediaSerializer, LikeSerializer, CommentSerializer, ReplySerializer
-from rest_framework.permissions import IsAuthenticatedOrReadOnly
+from .serializers import PostSerializer, PostMediaSerializer, LikeSerializer, CommentSerializer, ReplySerializer, CommentLikeSerializer, ReplyLikeSerializer
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import ValidationError
 from .permissions import IsOwnerOrAdminOrReadOnly
 from notifications.utils import create_notification
-from .pagination import PostPagination
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.filters import SearchFilter
+from django.db.models import Count
 
 
 # Post ViewSet
 class PostViewSet(viewsets.ModelViewSet):
     serializer_class = PostSerializer
     permission_classes = [IsOwnerOrAdminOrReadOnly]
-    pagination_class = PostPagination
+    filter_backends = [SearchFilter, DjangoFilterBackend]
+
+    search_fields = [
+        'caption',            
+        'user__first_name',  
+        'user__last_name',  
+        'mood_status',      
+    ]
 
     def get_queryset(self):
         user = self.request.user
-        all_posts = Post.objects.all().order_by("-created_at")
-        liked_post = Like.objects.filter(user=user).values_list("post_id", flat=True)
-        visible_post_ids = []
+        from django.db.models import Q
+        import random
 
-        for post in all_posts:
-            if post.status == "public":
-                visible_post_ids.append(post.id)
-            elif post.user == user:
-                visible_post_ids.append(post.id)
-            elif post.status == "friends":
-                if Follow.objects.filter(follower=user, following=post.user).exists():
-                    visible_post_ids.append(post.id)
+        # filter by user id if provided
+        user_id = self.request.query_params.get('user', None)
+        if user_id:
+            return Post.objects.filter(
+                user_id=user_id,
+                status='public'
+            ).order_by('-created_at')
 
-        queryset = Post.objects.filter(id__in=visible_post_ids)
-    
+        queryset = Post.objects.filter(
+            Q(status="public") |
+            Q(status="followers", user__followers__follower=user)
+        ).distinct()
+
         if self.action == "list":
-            liked_posts = Like.objects.filter(
-                user=user
-            ).values_list("post_id", flat=True)
+            liked_posts = Like.objects.filter(user=user).values_list("post_id", flat=True)
+            posts = list(
+                queryset
+                .exclude(id__in=liked_posts)
+                .exclude(user=user)
+                .order_by("-created_at")
+            )
+            random.shuffle(posts)
+            return posts
 
-            queryset = queryset.exclude(id__in=liked_posts)
-
-        return queryset.order_by("?")[:10]
+        return queryset.order_by("-created_at")
 
 
     def perform_create(self, serializer):
@@ -62,6 +76,35 @@ class PostViewSet(viewsets.ModelViewSet):
         post = self.get_object()  
         share_url = f"{request.scheme}://{request.get_host()}/api/posts/{post.id}/"
         return Response({"share_url": share_url})
+    
+    @action(detail=False, methods=["get"])
+    def user_posts(self, request):
+        user_id = request.query_params.get('user_id')
+        if not user_id:
+            return Response([])
+        posts = Post.objects.filter(
+            user_id=user_id,
+            status='public'
+        ).order_by('-created_at')
+        serializer = self.get_serializer(posts, many=True)
+        return Response(serializer.data)
+
+
+# for # uses
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def trending_moods(request):
+    trends = (
+        Post.objects
+        .exclude(mood_status__isnull=True)
+        .exclude(mood_status='')
+        .values('mood_status')
+        .annotate(count=Count('mood_status'))
+        .order_by('-count')[:7]
+    )
+    return Response([f"#{t['mood_status']}" for t in trends])
+
+
 
 # PostMedia ViewSet
 class PostMediaViewSet(viewsets.ModelViewSet):
@@ -124,7 +167,13 @@ class CommentViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         post_id = self.kwargs.get('post_pk')
-        return Comment.objects.filter(post_id=post_id).select_related("user", "post").order_by("created_at")
+        return Comment.objects.filter(
+            post_id=post_id
+        ).select_related(
+            "user", "post"
+        ).annotate(
+            like_count=Count('likes')  # ← add
+        ).order_by("created_at")
 
     def perform_create(self, serializer):
         post_id = self.kwargs.get('post_pk')
@@ -150,7 +199,9 @@ class ReplyViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         comment_id = self.kwargs.get('comment_pk')
-        return Reply.objects.filter(comment_id=comment_id).order_by('created_at')
+        return Reply.objects.filter(comment_id=comment_id).annotate(
+            like_count=Count('likes')
+        ).order_by('created_at')
 
     def perform_create(self, serializer):
         comment_id = self.kwargs.get('comment_pk')
@@ -172,5 +223,73 @@ class ReplyViewSet(viewsets.ModelViewSet):
                 notification_type="reply",
                 post_id=comment.post.id,
                 text="replied to your comment",
+                url=share_url
+            )
+
+
+class CommentLikeViewSet(viewsets.ModelViewSet):
+    serializer_class = CommentLikeSerializer
+    permission_classes = [IsOwnerOrAdminOrReadOnly]
+
+    def get_queryset(self):
+        comment_id = self.kwargs.get('comment_pk')
+        return CommentLike.objects.filter(comment_id=comment_id).select_related("user", "comment")
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        comment_id = self.kwargs.get('comment_pk')
+
+        try:
+            comment = Comment.objects.select_related('user', 'post').get(id=comment_id)
+        except Comment.DoesNotExist:
+            raise ValidationError("Comment not found")
+
+        if CommentLike.objects.filter(user=user, comment=comment).exists():
+            raise ValidationError("You have already liked this comment")
+
+        like = serializer.save(user=user, comment=comment)
+
+        if comment.user != user:
+            share_url = f"{self.request.scheme}://{self.request.get_host()}/api/posts/{comment.post.id}/"
+            create_notification(
+                sender=user,
+                receiver=comment.user,
+                notification_type="like",
+                post_id=comment.post.id,
+                text="liked your comment",
+                url=share_url
+            )
+
+
+class ReplyLikeViewSet(viewsets.ModelViewSet):
+    serializer_class = ReplyLikeSerializer
+    permission_classes = [IsOwnerOrAdminOrReadOnly]
+
+    def get_queryset(self):
+        reply_id = self.kwargs.get('reply_pk')
+        return ReplyLike.objects.filter(reply_id=reply_id).select_related("user", "reply")
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        reply_id = self.kwargs.get('reply_pk')
+
+        try:
+            reply = Reply.objects.select_related('user', 'comment__post').get(id=reply_id)
+        except Reply.DoesNotExist:
+            raise ValidationError("Reply not found")
+
+        if ReplyLike.objects.filter(user=user, reply=reply).exists():
+            raise ValidationError("You have already liked this reply")
+
+        like = serializer.save(user=user, reply=reply)
+
+        if reply.user != user:
+            share_url = f"{self.request.scheme}://{self.request.get_host()}/api/posts/{reply.comment.post.id}/"
+            create_notification(
+                sender=user,
+                receiver=reply.user,
+                notification_type="like",
+                post_id=reply.comment.post.id,
+                text="liked your reply",
                 url=share_url
             )

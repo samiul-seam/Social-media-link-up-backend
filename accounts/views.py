@@ -4,16 +4,35 @@ from rest_framework.exceptions import ValidationError
 from .models import Follow, User
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from .serializers import FollowSerializer
-from notifications.utils import create_notification  
+from .serializers import FollowSerializer, UserSerializer, AllUserSerializer
+from notifications.utils import create_notification
+from rest_framework.filters import SearchFilter
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.filters import SearchFilter  
 
+
+class UserViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = AllUserSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [SearchFilter]
+
+    def get_queryset(self):
+        return User.objects.exclude(id=self.request.user.id).prefetch_related('followers', 'following')
+
+    search_fields = [
+        'first_name',
+        'last_name',
+        'email'
+    ]
 
 class FollowViewSet(viewsets.ModelViewSet):
     serializer_class = FollowSerializer
     permission_classes = [IsAuthenticated]
+    filter_backends = [SearchFilter, DjangoFilterBackend]
+
+    search_fields = ['following__first_name', 'following__last_name']
 
     def get_queryset(self):
-        # shows all users the current user is following
         return Follow.objects.filter(follower=self.request.user)
 
     def perform_create(self, serializer):
@@ -23,7 +42,6 @@ class FollowViewSet(viewsets.ModelViewSet):
         if Follow.objects.filter(follower=self.request.user, following=followee).exists():
             raise ValidationError("You are already following this user.")
 
-        # save follow relation
         follow_instance = serializer.save(follower=self.request.user)
 
         # create notification
@@ -36,14 +54,19 @@ class FollowViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"])
     def followers(self, request):
-        user = request.user
-        followers = user.followers.all() 
-        serializer = self.get_serializer(followers, many=True)
+        users = User.objects.filter(
+            following__following=request.user
+        ).exclude(id=request.user.id).distinct()
+
+        serializer = UserSerializer(users, many=True)
         return Response(serializer.data)
+
 
     @action(detail=False, methods=["get"])
     def following(self, request):
-        user = request.user
-        following = user.following.all()
-        serializer = self.get_serializer(following, many=True)
+        users = User.objects.filter(
+            followers__follower=request.user
+        ).exclude(id=request.user.id).distinct()
+
+        serializer = UserSerializer(users, many=True)
         return Response(serializer.data)
