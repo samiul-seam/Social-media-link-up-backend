@@ -14,6 +14,8 @@ class ChatList(models.Model):
         related_name="inbox_user2" )
  
     updated_at = models.DateTimeField(auto_now=True)
+    deleted_for = models.ManyToManyField(User, blank=True, related_name='deleted_inboxes')
+
 
     class Meta:
         unique_together = ("user1", "user2")
@@ -21,6 +23,14 @@ class ChatList(models.Model):
     def __str__(self):
         return f"{self.user1} - {self.user2}"
     
+
+class InboxDeletion(models.Model):
+    inbox = models.ForeignKey(ChatList, on_delete=models.CASCADE, related_name='deletions')
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    deleted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('inbox', 'user')
 
 
 class Message(models.Model):
@@ -32,6 +42,7 @@ class Message(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     is_read = models.BooleanField(default=False)
+    is_edited = models.BooleanField(default=False)
 
     class Meta:
         ordering = ['created_at']

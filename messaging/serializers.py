@@ -52,6 +52,7 @@ class InboxSerializer(serializers.ModelSerializer):
             "created_at": last.created_at,
             "is_read": last.is_read,
             "sender_id": last.sender_id,
+            "is_edited": last.is_edited,
         }
 
  
@@ -67,7 +68,7 @@ class MessageSerializer(serializers.ModelSerializer):
         model = Message
         fields = [
             'id',  
-            'message', 'sender_profile', 'receiver_profile', 'images', 'created_at', 'is_read'
+            'message', 'sender_profile', 'receiver_profile', 'images', 'created_at', 'is_read', 'is_edited'
         ]
         read_only_fields = ['created_at', 'is_read']
 
