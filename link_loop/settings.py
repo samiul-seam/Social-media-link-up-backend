@@ -16,8 +16,7 @@ SECRET_KEY = config('SECRET_KEY')
 
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
-
+DEBUG = config('DEBUG', default=False, cast=bool)
 
 
 # Application definition
@@ -58,6 +57,7 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'link_loop.urls'
 
+
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
@@ -73,7 +73,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'link_loop.asgi.application'
+WSGI_APPLICATION = 'link_loop.wsgi.application'
 
 
 # Database
@@ -150,7 +150,12 @@ AUTH_USER_MODEL = "accounts.User"
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '192.168.10.40']
+ALLOWED_HOSTS = [
+    'localhost', 
+    '127.0.0.1', 
+    '192.168.10.40',
+    '.railway.app',
+]
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:8081",
@@ -214,6 +219,15 @@ CHANNEL_LAYERS = {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
         'CONFIG': {
             'hosts': [('127.0.0.1', 6379)],
+        },
+    },
+}
+
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            'hosts': [config('REDIS_URL')],
         },
     },
 }
