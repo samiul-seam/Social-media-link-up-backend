@@ -9,21 +9,33 @@ from notifications.utils import create_notification
 from rest_framework.filters import SearchFilter
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter  
+from django.db.models.functions import Concat
+from django.db.models import Q, Value
 
+
+from django.db.models import Q, Value
+from django.db.models.functions import Concat
 
 class UserViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = AllUserSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [SearchFilter]
+    search_fields = ['first_name', 'last_name', 'email']
 
     def get_queryset(self):
-        return User.objects.exclude(id=self.request.user.id).prefetch_related('followers', 'following')
+        queryset = User.objects.exclude(
+            id=self.request.user.id
+        ).prefetch_related('followers', 'following')
 
-    search_fields = [
-        'first_name',
-        'last_name',
-        'email'
-    ]
+        search = self.request.query_params.get('search', '').strip()
+        if search:
+            queryset = queryset.filter(
+                Q(first_name__icontains=search) |
+                Q(last_name__icontains=search) |
+                Q(email__icontains=search)
+            )
+
+        return queryset
 
 class FollowViewSet(viewsets.ModelViewSet):
     serializer_class = FollowSerializer
