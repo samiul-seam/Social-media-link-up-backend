@@ -11,7 +11,7 @@ from accounts.views import FollowViewSet, UserViewSet
 router = routers.DefaultRouter()
 router.register('posts', PostViewSet, basename='post')
 router.register('users', UserViewSet, basename='users')
-router.register('follows', FollowViewSet, basename='follow')
+router.register('follows', FollowViewSet, basename='follows')
 router.register('inboxes', InboxListView, basename='inbox')
 router.register('notification', NotificationViewSet, basename='notification')
 router.register('message_notification', MessageNotificationViewSet, basename='message-notification')

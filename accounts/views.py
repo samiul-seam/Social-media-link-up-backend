@@ -56,10 +56,10 @@ class FollowViewSet(viewsets.ModelViewSet):
     def followers(self, request):
         user_id = request.query_params.get('user_id', None)
         target_user = User.objects.get(id=user_id) if user_id else request.user
-        
+
         users = User.objects.filter(
             following__following=target_user
-        ).exclude(id=request.user.id).distinct()
+        ).distinct()
 
         serializer = UserSerializer(users, many=True)
         return Response(serializer.data)
@@ -72,7 +72,7 @@ class FollowViewSet(viewsets.ModelViewSet):
 
         users = User.objects.filter(
             followers__follower=target_user
-        ).exclude(id=request.user.id).distinct()
+        ).distinct()
 
         serializer = UserSerializer(users, many=True)
         return Response(serializer.data)
