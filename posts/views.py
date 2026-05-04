@@ -30,9 +30,7 @@ class PostViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         from django.db.models import Q
-        import random
 
-        # filter by user id if provided
         user_id = self.request.query_params.get('user', None)
         if user_id:
             return Post.objects.filter(
@@ -47,14 +45,12 @@ class PostViewSet(viewsets.ModelViewSet):
 
         if self.action == "list":
             liked_posts = Like.objects.filter(user=user).values_list("post_id", flat=True)
-            posts = list(
+            return (
                 queryset
                 .exclude(id__in=liked_posts)
                 .exclude(user=user)
-                .order_by("-created_at")
+                .order_by("?")
             )
-            random.shuffle(posts)
-            return posts
 
         return queryset.order_by("-created_at")
 
