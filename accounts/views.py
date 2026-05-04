@@ -29,8 +29,8 @@ class FollowViewSet(viewsets.ModelViewSet):
     serializer_class = FollowSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [SearchFilter, DjangoFilterBackend]
-
     search_fields = ['following__first_name', 'following__last_name']
+    filterset_fields = ['following']
 
     def get_queryset(self):
         return Follow.objects.filter(follower=self.request.user)
@@ -54,8 +54,11 @@ class FollowViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"])
     def followers(self, request):
+        user_id = request.query_params.get('user_id', None)
+        target_user = User.objects.get(id=user_id) if user_id else request.user
+        
         users = User.objects.filter(
-            following__following=request.user
+            following__following=target_user
         ).exclude(id=request.user.id).distinct()
 
         serializer = UserSerializer(users, many=True)
@@ -64,8 +67,11 @@ class FollowViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"])
     def following(self, request):
+        user_id = request.query_params.get('user_id', None)
+        target_user = User.objects.get(id=user_id) if user_id else request.user
+
         users = User.objects.filter(
-            followers__follower=request.user
+            followers__follower=target_user
         ).exclude(id=request.user.id).distinct()
 
         serializer = UserSerializer(users, many=True)
