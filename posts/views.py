@@ -49,6 +49,7 @@ class PostViewSet(viewsets.ModelViewSet):
                 queryset
                 .exclude(id__in=liked_posts)
                 .exclude(user=user)
+                .distinct()
                 .order_by("?")
             )
 
