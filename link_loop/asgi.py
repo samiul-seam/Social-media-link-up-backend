@@ -1,16 +1,20 @@
-"""
-ASGI config for link_loop project.
-
-It exposes the ASGI callable as a module-level variable named ``application``.
-
-For more information on this file, see
-https://docs.djangoproject.com/en/6.0/howto/deployment/asgi/
-"""
-
 import os
-
-from django.core.asgi import get_asgi_application
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'link_loop.settings')
 
-application = get_asgi_application()
+# Django setup must happen before any other imports
+from django.core.asgi import get_asgi_application
+django_asgi_app = get_asgi_application()
+
+from channels.routing import ProtocolTypeRouter, URLRouter
+from messaging.middleware import JWTAuthMiddleware
+import api.routing
+
+application = ProtocolTypeRouter({
+    'http': django_asgi_app,
+    'websocket': JWTAuthMiddleware(
+        URLRouter(
+            api.routing.websocket_urlpatterns
+        )
+    ), 
+})

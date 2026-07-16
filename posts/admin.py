@@ -28,7 +28,7 @@ class PostAdmin(admin.ModelAdmin):
 
 @admin.register(PostMedia)
 class PostMediaAdmin(admin.ModelAdmin):
-    list_display = ['id', 'post', 'file']
+    list_display = ['id', 'post', 'image']
     search_fields = ['post__caption', 'post__user__username']
 
 

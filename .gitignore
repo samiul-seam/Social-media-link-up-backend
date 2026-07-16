@@ -1,5 +1,10 @@
 link_env/
 __pycache__/
+*.pyc
+*.pyo
 .env
 /media/
 db.sqlite3
+Front-end/
+staticfiles/
+*.log

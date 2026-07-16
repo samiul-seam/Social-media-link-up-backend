@@ -6,7 +6,6 @@ from notifications.models import Notification, MessageNotification
 from rest_framework.permissions import IsAuthenticated
 
 
-
 class NotificationViewSet(viewsets.ModelViewSet):
     serializer_class = NotificationSerializer
     permission_classes = [IsAuthenticated]

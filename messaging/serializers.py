@@ -11,18 +11,51 @@ class ImageMessageSerializer(serializers.ModelSerializer):
 
 
 class ProfileSerializer(serializers.ModelSerializer):
+    profile_picture = serializers.SerializerMethodField()
+
     class Meta:
         model = User
-        fields = ['id', 'username', 'profile_picture']
+        fields = ['id', 'full_name', 'profile_picture']
+
+    def get_profile_picture(self, obj):
+        return obj.profile_picture.url if obj.profile_picture else None
 
 
 class InboxSerializer(serializers.ModelSerializer):
+    other_user = serializers.SerializerMethodField()
+    last_message = serializers.SerializerMethodField()
+    unread_count = serializers.SerializerMethodField()
 
     class Meta:
         model = ChatList
-        fields = ['id', 'user2', 'updated_at']
+        fields = ['id', 'user2', 'other_user', 'last_message', 'unread_count', 'updated_at']
 
+    def get_unread_count(self, obj):
+        request = self.context.get('request')
+        if not request:
+            return 0
+        return obj.messages.filter(is_read=False).exclude(sender=request.user).count()
 
+    def get_other_user(self, obj):
+        request = self.context.get('request')
+        user = request.user if request else None
+        other = obj.user2 if obj.user1 == user else obj.user1
+        return ProfileSerializer(other, context=self.context).data
+
+    def get_last_message(self, obj):
+        last = obj.messages.order_by('-created_at').first()
+        if not last:
+            return None
+        return {
+            "id": last.id,
+            "message": last.message,
+            "created_at": last.created_at,
+            "is_read": last.is_read,
+            "sender_id": last.sender_id,
+            "is_edited": last.is_edited,
+        }
+
+ 
 
 # Message Serializer
 class MessageSerializer(serializers.ModelSerializer):
@@ -35,7 +68,7 @@ class MessageSerializer(serializers.ModelSerializer):
         model = Message
         fields = [
             'id',  
-            'message', 'sender_profile', 'receiver_profile', 'images', 'created_at', 'is_read'
+            'message', 'sender_profile', 'receiver_profile', 'images', 'created_at', 'is_read', 'is_edited'
         ]
         read_only_fields = ['created_at', 'is_read']
 
