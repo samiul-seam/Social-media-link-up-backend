@@ -144,18 +144,10 @@ AUTH_USER_MODEL = "accounts.User"
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
-ALLOWED_HOSTS = [
-    'localhost', 
-    '127.0.0.1', 
-    '192.168.10.40',
-    '.railway.app',
-]
 
+ALLOWED_HOSTS = config("ALLOWED_HOSTS").split(",")
 
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:8081",
-    "http://192.168.10.40:8081",
-]
+CORS_ALLOWED_ORIGINS = config("CORS_ALLOWED_ORIGINS").split(",")
 
 # CORS_ALLOW_ALL_ORIGINS = True
 
