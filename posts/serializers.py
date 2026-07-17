@@ -24,7 +24,7 @@ class ReplySerializer(serializers.ModelSerializer):
     reply_like = ReplyLikeSerializer(many=True, read_only=True)
     is_liked = serializers.SerializerMethodField()
     like_id = serializers.SerializerMethodField()
-    like_count = serializers.IntegerField(source='likes.count', read_only=True)
+    like_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Reply
@@ -34,15 +34,29 @@ class ReplySerializer(serializers.ModelSerializer):
     def get_is_liked(self, obj):
         request = self.context.get('request')
         if request and request.user.is_authenticated:
+            if hasattr(obj, '_prefetched_objects_cache') and 'likes' in obj._prefetched_objects_cache:
+                return any(like.user_id == request.user.id for like in obj.likes.all())
             return obj.likes.filter(user=request.user).exists()
         return False
 
     def get_like_id(self, obj):
         request = self.context.get('request')
         if request and request.user.is_authenticated:
+            if hasattr(obj, '_prefetched_objects_cache') and 'likes' in obj._prefetched_objects_cache:
+                for like in obj.likes.all():
+                    if like.user_id == request.user.id:
+                        return like.id
+                return None
             like = obj.likes.filter(user=request.user).first()
             return like.id if like else None
         return None
+
+    def get_like_count(self, obj):
+        if hasattr(obj, '_prefetched_objects_cache') and 'likes' in obj._prefetched_objects_cache:
+            return len(obj.likes.all())
+        if hasattr(obj, 'like_count'):
+            return obj.like_count
+        return obj.likes.count()
 
  
 class CommentSerializer(serializers.ModelSerializer):
@@ -52,7 +66,7 @@ class CommentSerializer(serializers.ModelSerializer):
     comment_like = CommentLikeSerializer(many=True, read_only=True)
     is_liked = serializers.SerializerMethodField()
     like_id = serializers.SerializerMethodField()
-    like_count = serializers.IntegerField(source='likes.count', read_only=True)
+    like_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Comment
@@ -67,15 +81,29 @@ class CommentSerializer(serializers.ModelSerializer):
     def get_is_liked(self, obj):
         request = self.context.get('request')
         if request and request.user.is_authenticated:
+            if hasattr(obj, '_prefetched_objects_cache') and 'likes' in obj._prefetched_objects_cache:
+                return any(like.user_id == request.user.id for like in obj.likes.all())
             return obj.likes.filter(user=request.user).exists()
         return False
 
     def get_like_id(self, obj):
         request = self.context.get('request')
         if request and request.user.is_authenticated:
+            if hasattr(obj, '_prefetched_objects_cache') and 'likes' in obj._prefetched_objects_cache:
+                for like in obj.likes.all():
+                    if like.user_id == request.user.id:
+                        return like.id
+                return None
             like = obj.likes.filter(user=request.user).first()
             return like.id if like else None
         return None
+
+    def get_like_count(self, obj):
+        if hasattr(obj, '_prefetched_objects_cache') and 'likes' in obj._prefetched_objects_cache:
+            return len(obj.likes.all())
+        if hasattr(obj, 'like_count'):
+            return obj.like_count
+        return obj.likes.count()
 
 
 # PostMedia Serializer
@@ -116,12 +144,19 @@ class PostSerializer(serializers.ModelSerializer):
     def get_is_liked(self, obj):
         request = self.context.get('request')
         if request and request.user.is_authenticated:
+            if hasattr(obj, '_prefetched_objects_cache') and 'likes' in obj._prefetched_objects_cache:
+                return any(like.user_id == request.user.id for like in obj.likes.all())
             return obj.likes.filter(user=request.user).exists()
         return False
 
     def get_like_id(self, obj):
         request = self.context.get('request')
         if request and request.user.is_authenticated:
+            if hasattr(obj, '_prefetched_objects_cache') and 'likes' in obj._prefetched_objects_cache:
+                for like in obj.likes.all():
+                    if like.user_id == request.user.id:
+                        return like.id
+                return None
             like = obj.likes.filter(user=request.user).first()
             return like.id if like else None
         return None

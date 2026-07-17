@@ -27,16 +27,27 @@ class PostViewSet(viewsets.ModelViewSet):
         'mood_status',      
     ]
 
+    def get_optimized_post_queryset(self, queryset):
+        return queryset.select_related('user').prefetch_related(
+            'images',
+            'likes',
+            'comments__user',
+            'comments__likes',
+            'comments__replies__user',
+            'comments__replies__likes',
+        )
+
     def get_queryset(self):
         user = self.request.user
         from django.db.models import Q
 
         user_id = self.request.query_params.get('user', None)
         if user_id:
-            return Post.objects.filter(
+            queryset = Post.objects.filter(
                 user_id=user_id,
                 status='public'
             ).order_by('-created_at')
+            return self.get_optimized_post_queryset(queryset)
 
         queryset = Post.objects.filter(
             Q(status="public") |
@@ -45,15 +56,17 @@ class PostViewSet(viewsets.ModelViewSet):
 
         if self.action == "list":
             liked_posts = Like.objects.filter(user=user).values_list("post_id", flat=True)
-            return (
+            queryset = (
                 queryset
                 .exclude(id__in=liked_posts)
                 .exclude(user=user)
                 .distinct()
                 .order_by("?")
             )
+            return self.get_optimized_post_queryset(queryset)
 
-        return queryset.order_by("-created_at")
+        queryset = queryset.order_by("-created_at")
+        return self.get_optimized_post_queryset(queryset)
 
 
     def perform_create(self, serializer):
@@ -64,6 +77,7 @@ class PostViewSet(viewsets.ModelViewSet):
     def my_posts(self, request):
         user = request.user
         own_posts = Post.objects.filter(user=user).order_by("-created_at")
+        own_posts = self.get_optimized_post_queryset(own_posts)
         serializer = self.get_serializer(own_posts, many=True)
         return Response(serializer.data)
     
@@ -83,6 +97,7 @@ class PostViewSet(viewsets.ModelViewSet):
             user_id=user_id,
             status='public'
         ).order_by('-created_at')
+        posts = self.get_optimized_post_queryset(posts)
         serializer = self.get_serializer(posts, many=True)
         return Response(serializer.data)
 
@@ -168,8 +183,10 @@ class CommentViewSet(viewsets.ModelViewSet):
             post_id=post_id
         ).select_related(
             "user", "post"
-        ).annotate(
-            like_count=Count('likes')  # ← add
+        ).prefetch_related(
+            "likes",
+            "replies__user",
+            "replies__likes",
         ).order_by("created_at")
 
     def perform_create(self, serializer):
@@ -196,8 +213,12 @@ class ReplyViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         comment_id = self.kwargs.get('comment_pk')
-        return Reply.objects.filter(comment_id=comment_id).annotate(
-            like_count=Count('likes')
+        return Reply.objects.filter(
+            comment_id=comment_id
+        ).select_related(
+            "user", "comment"
+        ).prefetch_related(
+            "likes"
         ).order_by('created_at')
 
     def perform_create(self, serializer):

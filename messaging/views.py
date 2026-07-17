@@ -67,14 +67,15 @@ class MessageViewSet(viewsets.ModelViewSet):
         inbox_id = self.kwargs.get('inbox_pk')
         user = self.request.user
 
+        queryset = Message.objects.filter(inbox_id=inbox_id).select_related('sender', 'receiver').prefetch_related('images')
+
         try:
             deletion = InboxDeletion.objects.get(inbox_id=inbox_id, user=user)
-            return Message.objects.filter(
-                inbox_id=inbox_id,
+            return queryset.filter(
                 created_at__gt=deletion.deleted_at
             ).order_by('-created_at')
         except InboxDeletion.DoesNotExist:
-            return Message.objects.filter(inbox_id=inbox_id).order_by('-created_at')
+            return queryset.order_by('-created_at')
 
     def perform_create(self, serializer):
         inbox = get_object_or_404(ChatList, id=self.kwargs.get('inbox_pk'))

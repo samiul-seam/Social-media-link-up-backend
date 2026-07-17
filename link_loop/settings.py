@@ -146,6 +146,7 @@ MEDIA_ROOT = BASE_DIR / 'media'
 
 
 ALLOWED_HOSTS = config("ALLOWED_HOSTS").split(",")
+print(ALLOWED_HOSTS)
 
 CORS_ALLOWED_ORIGINS = config("CORS_ALLOWED_ORIGINS").split(",")
 

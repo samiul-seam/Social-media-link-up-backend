@@ -32,8 +32,10 @@ class InboxSerializer(serializers.ModelSerializer):
 
     def get_unread_count(self, obj):
         request = self.context.get('request')
-        if not request:
+        if not request or not request.user.is_authenticated:
             return 0
+        if hasattr(obj, '_prefetched_objects_cache') and 'messages' in obj._prefetched_objects_cache:
+            return sum(1 for msg in obj.messages.all() if not msg.is_read and msg.sender_id != request.user.id)
         return obj.messages.filter(is_read=False).exclude(sender=request.user).count()
 
     def get_other_user(self, obj):
@@ -43,9 +45,15 @@ class InboxSerializer(serializers.ModelSerializer):
         return ProfileSerializer(other, context=self.context).data
 
     def get_last_message(self, obj):
-        last = obj.messages.order_by('-created_at').first()
-        if not last:
-            return None
+        if hasattr(obj, '_prefetched_objects_cache') and 'messages' in obj._prefetched_objects_cache:
+            messages = list(obj.messages.all())
+            if not messages:
+                return None
+            last = messages[-1]
+        else:
+            last = obj.messages.order_by('-created_at').first()
+            if not last:
+                return None
         return {
             "id": last.id,
             "message": last.message,

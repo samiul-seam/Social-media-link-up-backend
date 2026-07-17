@@ -38,9 +38,13 @@ class AllUserSerializer(serializers.ModelSerializer):
         return obj.profile_picture.url if obj.profile_picture else None
 
     def get_followers_count(self, obj):
+        if hasattr(obj, '_prefetched_objects_cache') and 'followers' in obj._prefetched_objects_cache:
+            return len(obj.followers.all())
         return obj.followers.count()
 
     def get_following_count(self, obj):
+        if hasattr(obj, '_prefetched_objects_cache') and 'following' in obj._prefetched_objects_cache:
+            return len(obj.following.all())
         return obj.following.count()
 
 
@@ -63,9 +67,13 @@ class UserSerializer(serializers.ModelSerializer):
         return f"{obj.first_name} {obj.last_name}"
 
     def get_followers_count(self, obj):
+        if hasattr(obj, '_prefetched_objects_cache') and 'followers' in obj._prefetched_objects_cache:
+            return len(obj.followers.all())
         return obj.followers.count()
 
     def get_following_count(self, obj):
+        if hasattr(obj, '_prefetched_objects_cache') and 'following' in obj._prefetched_objects_cache:
+            return len(obj.following.all())
         return obj.following.count()
 
     def to_representation(self, instance):

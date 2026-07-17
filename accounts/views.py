@@ -71,7 +71,7 @@ class FollowViewSet(viewsets.ModelViewSet):
 
         users = User.objects.filter(
             following__following=target_user
-        ).distinct()
+        ).prefetch_related('followers', 'following').distinct()
 
         serializer = UserSerializer(users, many=True)
         return Response(serializer.data)
@@ -84,7 +84,7 @@ class FollowViewSet(viewsets.ModelViewSet):
 
         users = User.objects.filter(
             followers__follower=target_user
-        ).distinct()
+        ).prefetch_related('followers', 'following').distinct()
 
         serializer = UserSerializer(users, many=True)
         return Response(serializer.data)
