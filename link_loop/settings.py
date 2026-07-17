@@ -204,11 +204,29 @@ SWAGGER_SETTINGS = {
 
 
 
-CHANNEL_LAYERS = {
-    'default': {
-        'BACKEND': 'channels_redis.core.RedisChannelLayer',
-        'CONFIG': {
-            'hosts': [config('REDIS_URL', default='redis://localhost:6379')],
+REDIS_URL = config('REDIS_URL', default='')
+if REDIS_URL:
+    try:
+        import socket
+        host = REDIS_URL.split('@')[1].split(':')[0] if '@' in REDIS_URL else REDIS_URL.split('://')[1].split(':')[0]
+        socket.getaddrinfo(host, 6379)
+        CHANNEL_LAYERS = {
+            'default': {
+                'BACKEND': 'channels_redis.core.RedisChannelLayer',
+                'CONFIG': {
+                    'hosts': [REDIS_URL],
+                },
+            },
+        }
+    except socket.gaierror:
+        CHANNEL_LAYERS = {
+            'default': {
+                'BACKEND': 'channels.layers.InMemoryChannelLayer',
+            },
+        }
+else:
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels.layers.InMemoryChannelLayer',
         },
-    },
-}
+    }

@@ -10,29 +10,33 @@ class NotificationConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         self.user = self.scope['user']
         self.group_name = None
+        self.in_group = False
 
         if not self.user.is_authenticated:
             await self.close()
             return
 
-        # Each user has their own personal notification channel
         self.group_name = f'notifications_{self.user.id}'
+
+        # Always accept the connection first — never let a Redis failure
+        # cause a reject, which would trigger an infinite reconnect loop.
+        await self.accept()
 
         try:
             await self.channel_layer.group_add(self.group_name, self.channel_name)
-            await self.accept()
+            self.in_group = True
         except Exception as e:
-            logger.error(f"NotificationConsumer connect error: {e}")
-            await self.close()
+            logger.error(f"NotificationConsumer: Redis group_add failed: {e}")
+            # Stay connected — user is authenticated, real-time pushes
+            # will just be unavailable until Redis recovers.
 
     async def disconnect(self, close_code):
-        if self.group_name:
+        if self.in_group and self.group_name:
             try:
                 await self.channel_layer.group_discard(self.group_name, self.channel_name)
             except Exception as e:
                 logger.warning(f"NotificationConsumer disconnect error: {e}")
 
-    # Handler for post/like/comment/follow/reply notifications
     async def send_notification(self, event):
         try:
             await self.send(text_data=json.dumps({
@@ -50,7 +54,6 @@ class NotificationConsumer(AsyncWebsocketConsumer):
         except Exception as e:
             logger.warning(f"NotificationConsumer send_notification error: {e}")
 
-    # Handler for message notifications
     async def send_message_notification(self, event):
         try:
             await self.send(text_data=json.dumps({

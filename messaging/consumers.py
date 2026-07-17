@@ -13,6 +13,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         self.user = self.scope['user']
         self.room_group_name = None
+        self.in_group = False
 
         if not self.user.is_authenticated:
             await self.close()
@@ -26,15 +27,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await self.close()
             return
 
+        # Accept first — never let a Redis failure cause rejection
+        await self.accept()
+
         try:
             await self.channel_layer.group_add(self.room_group_name, self.channel_name)
-            await self.accept()
+            self.in_group = True
         except Exception as e:
-            logger.error(f"ChatConsumer connect error: {e}")
-            await self.close()
+            logger.error(f"ChatConsumer: Redis group_add failed: {e}")
 
     async def disconnect(self, close_code):
-        if self.room_group_name:
+        if self.in_group and self.room_group_name:
             try:
                 await self.channel_layer.group_discard(self.room_group_name, self.channel_name)
             except Exception as e:
@@ -49,7 +52,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         message, receiver = await self.save_message(content)
 
-        # 1. broadcast to chat room
         try:
             await self.channel_layer.group_send(
                 self.room_group_name,
@@ -65,29 +67,24 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 }
             )
 
-            # 2. update both users' inbox lists
             receiver_unread = await self.get_unread_count(receiver)
 
-            inbox_payload_sender = {
+            await self.channel_layer.group_send(f'inbox_{self.user.id}', {
                 'type': 'inbox_update',
                 'chat_id': int(self.inbox_id),
                 'message': message.message,
                 'sender_id': self.user.id,
                 'created_at': str(message.created_at),
-                'unread_count': 0,  # sender sent it so unread is 0 for them
-            }
-
-            inbox_payload_receiver = {
+                'unread_count': 0,
+            })
+            await self.channel_layer.group_send(f'inbox_{receiver.id}', {
                 'type': 'inbox_update',
                 'chat_id': int(self.inbox_id),
                 'message': message.message,
                 'sender_id': self.user.id,
                 'created_at': str(message.created_at),
-                'unread_count': receiver_unread,  # receiver gets updated unread count
-            }
-
-            await self.channel_layer.group_send(f'inbox_{self.user.id}', inbox_payload_sender)
-            await self.channel_layer.group_send(f'inbox_{receiver.id}', inbox_payload_receiver)
+                'unread_count': receiver_unread,
+            })
 
         except Exception as e:
             logger.warning(f"ChatConsumer receive channel error: {e}")
@@ -124,17 +121,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
             receiver=receiver,
             message=content,
         )
-
         inbox.save()
 
         if receiver != self.user:
-            share_url = f"/api/inboxes/{inbox.id}/messages/"
             create_message_notification(
                 sender=self.user,
                 receiver=receiver,
                 message_id=message.id,
                 text="sent you a message",
-                url=share_url
+                url=f"/api/inboxes/{inbox.id}/messages/"
             )
 
         return message, receiver
@@ -150,6 +145,7 @@ class InboxConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         self.user = self.scope['user']
         self.group_name = None
+        self.in_group = False
 
         if not self.user.is_authenticated:
             await self.close()
@@ -157,15 +153,17 @@ class InboxConsumer(AsyncWebsocketConsumer):
 
         self.group_name = f'inbox_{self.user.id}'
 
+        # Accept first — never let a Redis failure cause rejection
+        await self.accept()
+
         try:
             await self.channel_layer.group_add(self.group_name, self.channel_name)
-            await self.accept()
+            self.in_group = True
         except Exception as e:
-            logger.error(f"InboxConsumer connect error: {e}")
-            await self.close()
+            logger.error(f"InboxConsumer: Redis group_add failed: {e}")
 
     async def disconnect(self, close_code):
-        if self.group_name:
+        if self.in_group and self.group_name:
             try:
                 await self.channel_layer.group_discard(self.group_name, self.channel_name)
             except Exception as e:
