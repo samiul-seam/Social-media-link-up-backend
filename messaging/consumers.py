@@ -1,14 +1,18 @@
 import json
+import logging
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from .models import ChatList, Message
 from notifications.utils import create_message_notification
+
+logger = logging.getLogger(__name__)
 
 
 class ChatConsumer(AsyncWebsocketConsumer):
 
     async def connect(self):
         self.user = self.scope['user']
+        self.room_group_name = None
 
         if not self.user.is_authenticated:
             await self.close()
@@ -22,11 +26,19 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await self.close()
             return
 
-        await self.channel_layer.group_add(self.room_group_name, self.channel_name)
-        await self.accept()
+        try:
+            await self.channel_layer.group_add(self.room_group_name, self.channel_name)
+            await self.accept()
+        except Exception as e:
+            logger.error(f"ChatConsumer connect error: {e}")
+            await self.close()
 
     async def disconnect(self, close_code):
-        await self.channel_layer.group_discard(self.room_group_name, self.channel_name)
+        if self.room_group_name:
+            try:
+                await self.channel_layer.group_discard(self.room_group_name, self.channel_name)
+            except Exception as e:
+                logger.warning(f"ChatConsumer disconnect error: {e}")
 
     async def receive(self, text_data):
         data = json.loads(text_data)
@@ -38,54 +50,61 @@ class ChatConsumer(AsyncWebsocketConsumer):
         message, receiver = await self.save_message(content)
 
         # 1. broadcast to chat room
-        await self.channel_layer.group_send(
-            self.room_group_name,
-            {
-                'type': 'chat_message',
-                'message_id': message.id,
+        try:
+            await self.channel_layer.group_send(
+                self.room_group_name,
+                {
+                    'type': 'chat_message',
+                    'message_id': message.id,
+                    'message': message.message,
+                    'sender_id': self.user.id,
+                    'sender_name': self.user.full_name,
+                    'receiver_id': receiver.id,
+                    'created_at': str(message.created_at),
+                    'is_read': message.is_read,
+                }
+            )
+
+            # 2. update both users' inbox lists
+            receiver_unread = await self.get_unread_count(receiver)
+
+            inbox_payload_sender = {
+                'type': 'inbox_update',
+                'chat_id': int(self.inbox_id),
                 'message': message.message,
                 'sender_id': self.user.id,
-                'sender_name': self.user.full_name,
-                'receiver_id': receiver.id,
                 'created_at': str(message.created_at),
-                'is_read': message.is_read,
+                'unread_count': 0,  # sender sent it so unread is 0 for them
             }
-        )
 
-        # 2. update both users' inbox lists
-        receiver_unread = await self.get_unread_count(receiver)
+            inbox_payload_receiver = {
+                'type': 'inbox_update',
+                'chat_id': int(self.inbox_id),
+                'message': message.message,
+                'sender_id': self.user.id,
+                'created_at': str(message.created_at),
+                'unread_count': receiver_unread,  # receiver gets updated unread count
+            }
 
-        inbox_payload_sender = {
-            'type': 'inbox_update',
-            'chat_id': int(self.inbox_id),
-            'message': message.message,
-            'sender_id': self.user.id,
-            'created_at': str(message.created_at),
-            'unread_count': 0,  # sender sent it so unread is 0 for them
-        }
+            await self.channel_layer.group_send(f'inbox_{self.user.id}', inbox_payload_sender)
+            await self.channel_layer.group_send(f'inbox_{receiver.id}', inbox_payload_receiver)
 
-        inbox_payload_receiver = {
-            'type': 'inbox_update',
-            'chat_id': int(self.inbox_id),
-            'message': message.message,
-            'sender_id': self.user.id,
-            'created_at': str(message.created_at),
-            'unread_count': receiver_unread,  # receiver gets updated unread count
-        }
-
-        await self.channel_layer.group_send(f'inbox_{self.user.id}', inbox_payload_sender)
-        await self.channel_layer.group_send(f'inbox_{receiver.id}', inbox_payload_receiver)
+        except Exception as e:
+            logger.warning(f"ChatConsumer receive channel error: {e}")
 
     async def chat_message(self, event):
-        await self.send(text_data=json.dumps({
-            'message_id': event['message_id'],
-            'message': event['message'],
-            'sender_id': event['sender_id'],
-            'sender_name': event['sender_name'],
-            'receiver_id': event['receiver_id'],
-            'created_at': event['created_at'],
-            'is_read': event['is_read'],
-        }))
+        try:
+            await self.send(text_data=json.dumps({
+                'message_id': event['message_id'],
+                'message': event['message'],
+                'sender_id': event['sender_id'],
+                'sender_name': event['sender_name'],
+                'receiver_id': event['receiver_id'],
+                'created_at': event['created_at'],
+                'is_read': event['is_read'],
+            }))
+        except Exception as e:
+            logger.warning(f"ChatConsumer chat_message error: {e}")
 
     @database_sync_to_async
     def is_participant(self):
@@ -130,23 +149,36 @@ class InboxConsumer(AsyncWebsocketConsumer):
 
     async def connect(self):
         self.user = self.scope['user']
+        self.group_name = None
 
         if not self.user.is_authenticated:
             await self.close()
             return
 
         self.group_name = f'inbox_{self.user.id}'
-        await self.channel_layer.group_add(self.group_name, self.channel_name)
-        await self.accept()
+
+        try:
+            await self.channel_layer.group_add(self.group_name, self.channel_name)
+            await self.accept()
+        except Exception as e:
+            logger.error(f"InboxConsumer connect error: {e}")
+            await self.close()
 
     async def disconnect(self, close_code):
-        await self.channel_layer.group_discard(self.group_name, self.channel_name)
+        if self.group_name:
+            try:
+                await self.channel_layer.group_discard(self.group_name, self.channel_name)
+            except Exception as e:
+                logger.warning(f"InboxConsumer disconnect error: {e}")
 
     async def inbox_update(self, event):
-        await self.send(text_data=json.dumps({
-            'chat_id': event['chat_id'],
-            'message': event['message'],
-            'sender_id': event['sender_id'],
-            'created_at': event['created_at'],
-            'unread_count': event.get('unread_count', 0),
-        }))
+        try:
+            await self.send(text_data=json.dumps({
+                'chat_id': event['chat_id'],
+                'message': event['message'],
+                'sender_id': event['sender_id'],
+                'created_at': event['created_at'],
+                'unread_count': event.get('unread_count', 0),
+            }))
+        except Exception as e:
+            logger.warning(f"InboxConsumer inbox_update error: {e}")

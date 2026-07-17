@@ -12,7 +12,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = config('SECRET_KEY')
+SECRET_KEY = config('SECRET_KEY', default='django-insecure-default-key-for-build')
 
 
 # SECURITY WARNING: don't run with debug turned on in production!
@@ -74,6 +74,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'link_loop.wsgi.application'
+ASGI_APPLICATION = 'link_loop.asgi.application'
 
 
 # Database
@@ -89,18 +90,18 @@ WSGI_APPLICATION = 'link_loop.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': config('DB_NAME'),
-        'USER': config('DB_USER'),
-        'PASSWORD': config('DB_PASSWORD'),
-        'HOST': config('DB_HOST'),
-        'PORT': config('DB_PORT'),
+        'NAME': config('DB_NAME', default='postgres'),
+        'USER': config('DB_USER', default='postgres'),
+        'PASSWORD': config('DB_PASSWORD', default=''),
+        'HOST': config('DB_HOST', default='localhost'),
+        'PORT': config('DB_PORT', default='5432'),
     }
 }
 
 cloudinary.config( 
-    cloud_name = config('CLOUD_NAME'), 
-    api_key = config('CLOUDINARY_API_KEY'), 
-    api_secret = config('CLOUDINARY_SECRET'),
+    cloud_name = config('CLOUD_NAME', default='default_cloud'), 
+    api_key = config('CLOUDINARY_API_KEY', default='default_key'), 
+    api_secret = config('CLOUDINARY_SECRET', default='default_secret'),
     secure=True
 )
 
@@ -145,10 +146,10 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 
-ALLOWED_HOSTS = config("ALLOWED_HOSTS").split(",")
+ALLOWED_HOSTS = config("ALLOWED_HOSTS", default="localhost,127.0.0.1").split(",")
 print(ALLOWED_HOSTS)
 
-CORS_ALLOWED_ORIGINS = config("CORS_ALLOWED_ORIGINS").split(",")
+CORS_ALLOWED_ORIGINS = config("CORS_ALLOWED_ORIGINS", default="http://localhost:8081").split(",")
 
 # CORS_ALLOW_ALL_ORIGINS = True
 
@@ -202,20 +203,12 @@ SWAGGER_SETTINGS = {
 } 
 
 
-CHANNEL_LAYERS = {
-    'default': {
-        'BACKEND': 'channels_redis.core.RedisChannelLayer',
-        'CONFIG': {
-            'hosts': [('127.0.0.1', 6379)],
-        },
-    },
-}
 
 CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
         'CONFIG': {
-            'hosts': [config('REDIS_URL')],
+            'hosts': [config('REDIS_URL', default='redis://localhost:6379')],
         },
     },
 }
