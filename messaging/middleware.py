@@ -6,16 +6,16 @@ from django.contrib.auth import get_user_model
 
 User = get_user_model()
 
-
 @database_sync_to_async
 def get_user_from_token(token_key):
     try:
         token = AccessToken(token_key)
         user_id = token['user_id']
         return User.objects.get(id=user_id)
-    except Exception:
+    except Exception as e:
+        import logging
+        logging.getLogger('django').error(f'WS auth failed: {type(e).__name__}: {e}')
         return AnonymousUser()
-
 
 class JWTAuthMiddleware(BaseMiddleware):
     async def __call__(self, scope, receive, send):
